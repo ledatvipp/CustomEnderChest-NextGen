@@ -34,6 +34,10 @@ public class ConfigHandler {
         return config.getDouble(path, def);
     }
 
+    public long getLong(String path, long def) {
+        return config.getLong(path, def);
+    }
+
     public boolean getBoolean(String path) {
         return config.getBoolean(path);
     }
