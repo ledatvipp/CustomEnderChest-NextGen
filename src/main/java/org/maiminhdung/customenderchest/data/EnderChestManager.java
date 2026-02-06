@@ -34,6 +34,8 @@ public class EnderChestManager {
     private final Scheduler.Task inventoryTrackerTask;
     private final Map<UUID, CompletableFuture<Inventory>> loadingTasks = new ConcurrentHashMap<>();
     private final Set<UUID> pendingOpenRequests = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Integer> loadAttempts = new ConcurrentHashMap<>();
+    private final Set<UUID> retryScheduled = ConcurrentHashMap.newKeySet();
 
     @Getter
     private final Map<Inventory, UUID> adminViewedChests = new ConcurrentHashMap<>();
@@ -165,12 +167,14 @@ public class EnderChestManager {
 
         // Check if data is currently being loaded to prevent loops
         if (dataLockManager.isLocked(player.getUniqueId())) {
+            pendingOpenRequests.add(player.getUniqueId());
             if (loadingTasks.containsKey(player.getUniqueId())) {
-                if (pendingOpenRequests.add(player.getUniqueId())) {
+                if (pendingOpenRequests.contains(player.getUniqueId())) {
                     player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.data-still-loading"));
                 }
             } else {
-                player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.data-busy"));
+                scheduleLoadRetry(player);
+                player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.data-still-loading"));
             }
             return;
         }
@@ -219,6 +223,7 @@ public class EnderChestManager {
 
         CompletableFuture<Inventory> future = new CompletableFuture<>();
         if (!dataLockManager.lock(playerUuid)) {
+            scheduleLoadRetry(player);
             future.completeExceptionally(new IllegalStateException("Data is locked for " + playerUuid));
             return future;
         }
@@ -249,10 +254,7 @@ public class EnderChestManager {
                                     plugin.getLogger().log(Level.SEVERE, "Failed to load data for " + player.getName(),
                                             error);
                                 }
-                                if (pendingOpenRequests.remove(playerUuid)) {
-                                    player.sendMessage(
-                                            plugin.getLocaleManager().getPrefixedComponent("messages.data-load-failed"));
-                                }
+                                scheduleLoadRetry(player);
                                 future.completeExceptionally(error);
                                 return;
                             }
@@ -327,6 +329,8 @@ public class EnderChestManager {
                             if (pendingOpenRequests.remove(playerUuid)) {
                                 openLoadedEnderChest(player, inv);
                             }
+                            loadAttempts.remove(playerUuid);
+                            retryScheduled.remove(playerUuid);
 
                             future.complete(inv);
                         } finally {
@@ -338,6 +342,53 @@ public class EnderChestManager {
                 });
 
         return future;
+    }
+
+    private void scheduleLoadRetry(Player player) {
+        UUID playerUuid = player.getUniqueId();
+        if (!pendingOpenRequests.contains(playerUuid)) {
+            return;
+        }
+
+        if (!retryScheduled.add(playerUuid)) {
+            return;
+        }
+
+        int maxAttempts = plugin.config().getInt("storage.load-retry-attempts", 3);
+        int attempt = loadAttempts.merge(playerUuid, 1, Integer::sum);
+        if (attempt > maxAttempts) {
+            pendingOpenRequests.remove(playerUuid);
+            loadAttempts.remove(playerUuid);
+            retryScheduled.remove(playerUuid);
+            if (player.isOnline()) {
+                player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.data-load-failed"));
+            }
+            return;
+        }
+
+        long delayTicks = plugin.config().getLong("storage.load-retry-delay-ticks", 40L);
+        Scheduler.runTaskLater(() -> {
+            retryScheduled.remove(playerUuid);
+            if (!player.isOnline()) {
+                return;
+            }
+
+            Inventory inv = getLoadedEnderChest(playerUuid);
+            if (inv != null) {
+                if (pendingOpenRequests.remove(playerUuid)) {
+                    openLoadedEnderChest(player, inv);
+                }
+                loadAttempts.remove(playerUuid);
+                return;
+            }
+
+            if (dataLockManager.isLocked(playerUuid)) {
+                scheduleLoadRetry(player);
+                return;
+            }
+
+            loadPlayerData(player);
+        }, delayTicks);
     }
 
     private static int getExpectedDisplaySize(Inventory inv, int permissionSize) {

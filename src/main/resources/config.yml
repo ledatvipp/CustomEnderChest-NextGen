@@ -52,6 +52,12 @@ storage:
   # This helps prevent players getting stuck with "data-still-loading".
   load-timeout-seconds: 15
 
+  # Retry loading player data if a lock or timeout occurs.
+  # This helps automatically recover from transient database stalls.
+  load-retry-attempts: 3
+  # Delay between retries in ticks (20 ticks = 1 second).
+  load-retry-delay-ticks: 40
+
   # Settings for MySQL (only apply if `type` is "mysql")
   mysql:
     host: "127.0.0.1"
