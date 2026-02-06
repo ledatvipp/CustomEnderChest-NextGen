@@ -8,6 +8,7 @@ messages:
   reload-success: "<green>Configuration and language files have been reloaded.</green>"
   data-still-loading: "<yellow>Your data is still loading, please wait a moment...</yellow>"
   data-busy: "<red>Player data is busy. Please try again shortly.</red>"
+  data-load-failed: "<red>Failed to load your data. Please try again.</red>"
   enderchest-click-disabled: "<red>Please use the command to open the EnderChest instead of using a chest.</red>"
   save-error: "<red>An error occurred while saving data. Please check the console.</red>"
   invalid-player: "<red>Invalid player name.</red>"

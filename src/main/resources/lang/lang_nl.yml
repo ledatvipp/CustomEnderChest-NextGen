@@ -8,6 +8,7 @@ messages:
   reload-success: "<green>Configuratie- en taal bestanden zijn opnieuw geladen.</green>"
   data-still-loading: "<yellow>Je gegevens worden nog geladen, even geduld a.u.b...</yellow>"
   data-busy: "<red>Spelerdata is bezig. Probeer het binnenkort opnieuw.</red>"
+  data-load-failed: "<red>Kan je gegevens niet laden. Probeer het opnieuw.</red>"
   enderchest-click-disabled: "<red>Gebruik het commando om de EnderChest te openen in plaats van een kist te gebruiken.</red>"
   save-error: "<red>Er is een fout opgetreden tijdens het opslaan van gegevens. Controleer de console.</red>"
   invalid-player: "<red>Ongeldige spelersnaam.</red>"
