@@ -2,7 +2,6 @@ package org.maiminhdung.customenderchest;
 
 import io.github.pluginupdatecore.updater.ConfigUpdater;
 import io.github.pluginupdatecore.updater.UpdateChecker;
-import lombok.Getter;
 import org.maiminhdung.customenderchest.backup.BackupManager;
 import org.maiminhdung.customenderchest.bstats.Metrics;
 import org.maiminhdung.customenderchest.bstats.Metrics.SimplePie;
@@ -20,27 +19,16 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class EnderChest extends JavaPlugin {
 
-	@Getter
     private static EnderChest instance;
-    @Getter
 	private ConfigHandler configHandler;
-	@Getter
     private EnderChestManager enderChestManager;
-	@Getter
     private LocaleManager localeManager;
-	@Getter
     private SoundHandler soundHandler;
-	@Getter
     private StorageManager storageManager;
-	@Getter
     private DebugLogger debugLogger;
-    @Getter
     private DataLockManager dataLockManager;
-    @Getter
     private UpdateChecker updateChecker;
-    @Getter
     private BackupManager backupManager;
-    @Getter
     private LegacyImporter legacyImporter;
 
 	@Override
@@ -139,5 +127,49 @@ public final class EnderChest extends JavaPlugin {
     public ConfigHandler config() {
 		return configHandler;
 	}
+
+    public static EnderChest getInstance() {
+        return instance;
+    }
+
+    public ConfigHandler getConfigHandler() {
+        return configHandler;
+    }
+
+    public EnderChestManager getEnderChestManager() {
+        return enderChestManager;
+    }
+
+    public LocaleManager getLocaleManager() {
+        return localeManager;
+    }
+
+    public SoundHandler getSoundHandler() {
+        return soundHandler;
+    }
+
+    public StorageManager getStorageManager() {
+        return storageManager;
+    }
+
+    public DebugLogger getDebugLogger() {
+        return debugLogger;
+    }
+
+    public DataLockManager getDataLockManager() {
+        return dataLockManager;
+    }
+
+    public UpdateChecker getUpdateChecker() {
+        return updateChecker;
+    }
+
+    public BackupManager getBackupManager() {
+        return backupManager;
+    }
+
+    public LegacyImporter getLegacyImporter() {
+        return legacyImporter;
+    }
 
 }
