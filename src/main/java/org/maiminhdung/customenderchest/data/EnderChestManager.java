@@ -2,7 +2,6 @@ package org.maiminhdung.customenderchest.data;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import lombok.Getter;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
@@ -37,9 +36,7 @@ public class EnderChestManager {
     private final Map<UUID, Integer> loadAttempts = new ConcurrentHashMap<>();
     private final Set<UUID> retryScheduled = ConcurrentHashMap.newKeySet();
 
-    @Getter
     private final Map<Inventory, UUID> adminViewedChests = new ConcurrentHashMap<>();
-    @Getter
     private final Map<UUID, Inventory> openInventories = new ConcurrentHashMap<>();
     private final Set<UUID> resizingPlayers = ConcurrentHashMap.newKeySet();
     private final Set<UUID> notifiedOverflowPlayers = ConcurrentHashMap.newKeySet();
@@ -786,5 +783,13 @@ public class EnderChestManager {
 
         liveData.put(player.getUniqueId(), newInv);
         plugin.getDebugLogger().log("Cache updated with items for player " + player.getName());
+    }
+
+    public Map<Inventory, UUID> getAdminViewedChests() {
+        return adminViewedChests;
+    }
+
+    public Map<UUID, Inventory> getOpenInventories() {
+        return openInventories;
     }
 }

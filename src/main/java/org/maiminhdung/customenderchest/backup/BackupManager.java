@@ -1,6 +1,5 @@
 package org.maiminhdung.customenderchest.backup;
 
-import lombok.Getter;
 import org.maiminhdung.customenderchest.EnderChest;
 import org.maiminhdung.customenderchest.Scheduler;
 
@@ -27,11 +26,6 @@ import java.util.zip.ZipOutputStream;
 public class BackupManager {
 
     private final EnderChest plugin;
-    /**
-     * -- GETTER --
-     *  Get backup folder
-     */
-    @Getter
     private final File backupFolder;
     private Scheduler.Task autoBackupTask;
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
@@ -45,6 +39,10 @@ public class BackupManager {
                 plugin.getLogger().info("Created backups folder at: " + backupFolder.getAbsolutePath());
             }
         }
+    }
+
+    public File getBackupFolder() {
+        return backupFolder;
     }
 
     /**
@@ -421,4 +419,3 @@ public class BackupManager {
     }
 
 }
-
