@@ -32,6 +32,8 @@ public class EnderChestManager {
     private final Cache<UUID, Inventory> liveData;
     private final Scheduler.Task autoSaveTask;
     private final Scheduler.Task inventoryTrackerTask;
+    private final Map<UUID, CompletableFuture<Inventory>> loadingTasks = new ConcurrentHashMap<>();
+    private final Set<UUID> pendingOpenRequests = ConcurrentHashMap.newKeySet();
 
     @Getter
     private final Map<Inventory, UUID> adminViewedChests = new ConcurrentHashMap<>();
@@ -77,102 +79,12 @@ public class EnderChestManager {
             return;
         }
 
-        if (!dataLockManager.lock(player.getUniqueId())) {
-            plugin.getDebugLogger()
-                    .log("Attempted to load data for " + player.getName() + ", but their data is currently locked.");
+        if (loadingTasks.containsKey(player.getUniqueId())) {
+            plugin.getDebugLogger().log("Data for " + player.getName() + " is already loading. Skipping load.");
             return;
         }
 
-        plugin.getDebugLogger().log("Data lock acquired for " + player.getName() + ". Checking storage...");
-        long startTime = System.nanoTime(); // DEBUG: Start timer
-
-        plugin.getStorageManager().getStorage().loadEnderChest(player.getUniqueId())
-                .whenComplete((items, error) -> {
-                    // Check if player is still online before processing
-                    if (!player.isOnline()) {
-                        dataLockManager.unlock(player.getUniqueId());
-                        return;
-                    }
-
-                    Scheduler.runEntityTask(player, () -> {
-                        try {
-                            if (error != null) {
-                                plugin.getLogger().log(Level.SEVERE, "Failed to load data for " + player.getName(),
-                                        error);
-                                return;
-                            }
-                            int size = EnderChestUtils.getSize(player);
-                            Component title = EnderChestUtils.getTitle(player);
-                            Inventory inv = Bukkit.createInventory(player, (size > 0 ? size : 9), title);
-
-                            // Check if items is empty array (indicating deserialization failure)
-                            if (items != null && items.length == 0) {
-                                // Check if player actually had data in database
-                                plugin.getStorageManager().getStorage().loadEnderChestSize(player.getUniqueId())
-                                        .thenAccept(savedSize -> {
-                                            if (savedSize > 0) {
-                                                // Player had data but it couldn't be loaded (version incompatibility)
-                                                Scheduler.runEntityTask(player, () -> {
-                                                    LocaleManager locale = plugin.getLocaleManager();
-                                                    player.sendMessage(locale.getPrefixedComponent(
-                                                            "messages.migration-data-incompatible"));
-                                                    player.sendMessage(locale
-                                                            .getPrefixedComponent("messages.migration-data-cleared"));
-                                                    player.sendMessage(locale
-                                                            .getPrefixedComponent("messages.migration-contact-admin"));
-                                                });
-                                            }
-                                        });
-                            } else if (items != null && size > 0) {
-                                if (items.length <= size) {
-                                    inv.setContents(items);
-                                } else {
-                                    // Player has items beyond their current permission limit
-                                    // Save the accessible items to inventory
-                                    for (int i = 0; i < size; i++) {
-                                        inv.setItem(i, items[i]);
-                                    }
-
-                                    // Save overflow items to storage
-                                    List<ItemStack> overflowItems = new ArrayList<>();
-                                    for (int i = size; i < items.length; i++) {
-                                        ItemStack item = items[i];
-                                        if (item != null && item.getType() != Material.AIR) {
-                                            overflowItems.add(item);
-                                        }
-                                    }
-
-                                    if (!overflowItems.isEmpty()) {
-                                        ItemStack[] overflowArray = overflowItems.toArray(new ItemStack[0]);
-                                        plugin.getStorageManager().getStorage()
-                                                .saveOverflowItems(player.getUniqueId(), overflowArray)
-                                                .thenRun(() -> {
-                                                    plugin.getDebugLogger().log("Saved " + overflowItems.size()
-                                                            + " overflow items for " + player.getName() + " on join");
-
-                                                    // Notify player about overflow items
-                                                    Scheduler.runEntityTask(player, () -> {
-                                                        LocaleManager locale = plugin.getLocaleManager();
-                                                        player.sendMessage(locale
-                                                                .getPrefixedComponent("messages.overflow-items-saved"));
-                                                        player.sendMessage(locale.getPrefixedComponent(
-                                                                "messages.overflow-will-restore"));
-                                                    });
-                                                });
-                                    }
-                                }
-                            }
-                            liveData.put(player.getUniqueId(), inv);
-
-                            long duration = (System.nanoTime() - startTime) / 1_000_000; // DEBUG: End timer
-                            plugin.getDebugLogger().log(
-                                    "Cache is ready for " + player.getName() + ". (Load time: " + duration + "ms)");
-                        } finally {
-                            dataLockManager.unlock(player.getUniqueId());
-                            plugin.getDebugLogger().log("Data lock released for " + player.getName());
-                        }
-                    });
-                });
+        loadPlayerData(player);
     }
 
     // Save player data when they leave the server.
@@ -253,22 +165,31 @@ public class EnderChestManager {
 
         // Check if data is currently being loaded to prevent loops
         if (dataLockManager.isLocked(player.getUniqueId())) {
-            player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.data-still-loading"));
+            if (loadingTasks.containsKey(player.getUniqueId())) {
+                if (pendingOpenRequests.add(player.getUniqueId())) {
+                    player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.data-still-loading"));
+                }
+            } else {
+                player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.data-busy"));
+            }
             return;
         }
 
         Inventory inv = getLoadedEnderChest(player.getUniqueId());
         if (inv == null) {
             // Trigger data loading asynchronously to prevent blocking
-            Scheduler.runTaskAsync(() -> {
-                if (player.isOnline()) {
-                    onPlayerJoin(player);
-                }
-            });
-            player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.data-still-loading"));
+            pendingOpenRequests.add(player.getUniqueId());
+            loadPlayerData(player);
+            if (player.isOnline()) {
+                player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.data-still-loading"));
+            }
             return;
         }
 
+        openLoadedEnderChest(player, inv);
+    }
+
+    private void openLoadedEnderChest(Player player, Inventory inv) {
         int permissionSize = EnderChestUtils.getSize(player);
         if (permissionSize == 0) {
             player.sendMessage(plugin.getLocaleManager().getPrefixedComponent("messages.no-permission"));
@@ -287,6 +208,136 @@ public class EnderChestManager {
         player.openInventory(inv);
         openInventories.put(player.getUniqueId(), inv); // Start tracking this inventory
         soundHandler.playSound(player, "open");
+    }
+
+    private CompletableFuture<Inventory> loadPlayerData(Player player) {
+        UUID playerUuid = player.getUniqueId();
+        CompletableFuture<Inventory> existing = loadingTasks.get(playerUuid);
+        if (existing != null) {
+            return existing;
+        }
+
+        CompletableFuture<Inventory> future = new CompletableFuture<>();
+        if (!dataLockManager.lock(playerUuid)) {
+            future.completeExceptionally(new IllegalStateException("Data is locked for " + playerUuid));
+            return future;
+        }
+
+        plugin.getDebugLogger().log("Data lock acquired for " + player.getName() + ". Checking storage...");
+        long startTime = System.nanoTime(); // DEBUG: Start timer
+        loadingTasks.put(playerUuid, future);
+
+        int loadTimeoutSeconds = plugin.config().getInt("storage.load-timeout-seconds", 15);
+
+        plugin.getStorageManager().getStorage().loadEnderChest(playerUuid)
+                .orTimeout(loadTimeoutSeconds, TimeUnit.SECONDS)
+                .whenComplete((items, error) -> {
+                    if (!player.isOnline()) {
+                        dataLockManager.unlock(playerUuid);
+                        loadingTasks.remove(playerUuid);
+                        future.complete(null);
+                        return;
+                    }
+
+                    Scheduler.runEntityTask(player, () -> {
+                        try {
+                            if (error != null) {
+                                if (error instanceof TimeoutException) {
+                                    plugin.getLogger().warning("Load data timed out for " + player.getName() + " after "
+                                            + loadTimeoutSeconds + "s.");
+                                } else {
+                                    plugin.getLogger().log(Level.SEVERE, "Failed to load data for " + player.getName(),
+                                            error);
+                                }
+                                if (pendingOpenRequests.remove(playerUuid)) {
+                                    player.sendMessage(
+                                            plugin.getLocaleManager().getPrefixedComponent("messages.data-load-failed"));
+                                }
+                                future.completeExceptionally(error);
+                                return;
+                            }
+
+                            int size = EnderChestUtils.getSize(player);
+                            Component title = EnderChestUtils.getTitle(player);
+                            Inventory inv = Bukkit.createInventory(player, (size > 0 ? size : 9), title);
+
+                            // Check if items is empty array (indicating deserialization failure)
+                            if (items != null && items.length == 0) {
+                                // Check if player actually had data in database
+                                plugin.getStorageManager().getStorage().loadEnderChestSize(playerUuid)
+                                        .thenAccept(savedSize -> {
+                                            if (savedSize > 0) {
+                                                // Player had data but it couldn't be loaded (version incompatibility)
+                                                Scheduler.runEntityTask(player, () -> {
+                                                    LocaleManager locale = plugin.getLocaleManager();
+                                                    player.sendMessage(locale.getPrefixedComponent(
+                                                            "messages.migration-data-incompatible"));
+                                                    player.sendMessage(locale
+                                                            .getPrefixedComponent("messages.migration-data-cleared"));
+                                                    player.sendMessage(locale
+                                                            .getPrefixedComponent("messages.migration-contact-admin"));
+                                                });
+                                            }
+                                        });
+                            } else if (items != null && size > 0) {
+                                if (items.length <= size) {
+                                    inv.setContents(items);
+                                } else {
+                                    // Player has items beyond their current permission limit
+                                    // Save the accessible items to inventory
+                                    for (int i = 0; i < size; i++) {
+                                        inv.setItem(i, items[i]);
+                                    }
+
+                                    // Save overflow items to storage
+                                    List<ItemStack> overflowItems = new ArrayList<>();
+                                    for (int i = size; i < items.length; i++) {
+                                        ItemStack item = items[i];
+                                        if (item != null && item.getType() != Material.AIR) {
+                                            overflowItems.add(item);
+                                        }
+                                    }
+
+                                    if (!overflowItems.isEmpty()) {
+                                        ItemStack[] overflowArray = overflowItems.toArray(new ItemStack[0]);
+                                        plugin.getStorageManager().getStorage()
+                                                .saveOverflowItems(player.getUniqueId(), overflowArray)
+                                                .thenRun(() -> {
+                                                    plugin.getDebugLogger().log("Saved " + overflowItems.size()
+                                                            + " overflow items for " + player.getName() + " on join");
+
+                                                    // Notify player about overflow items
+                                                    Scheduler.runEntityTask(player, () -> {
+                                                        LocaleManager locale = plugin.getLocaleManager();
+                                                        player.sendMessage(locale
+                                                                .getPrefixedComponent("messages.overflow-items-saved"));
+                                                        player.sendMessage(locale.getPrefixedComponent(
+                                                                "messages.overflow-will-restore"));
+                                                    });
+                                                });
+                                    }
+                                }
+                            }
+                            liveData.put(playerUuid, inv);
+
+                            long duration = (System.nanoTime() - startTime) / 1_000_000; // DEBUG: End timer
+                            plugin.getDebugLogger().log(
+                                    "Cache is ready for " + player.getName() + ". (Load time: " + duration + "ms)");
+
+                            if (pendingOpenRequests.remove(playerUuid)) {
+                                openLoadedEnderChest(player, inv);
+                            }
+
+                            future.complete(inv);
+                        } finally {
+                            dataLockManager.unlock(playerUuid);
+                            loadingTasks.remove(playerUuid);
+                            plugin.getDebugLogger().log("Data lock released for " + player.getName());
+                        }
+                    });
+                });
+
+        return future;
     }
 
     private static int getExpectedDisplaySize(Inventory inv, int permissionSize) {

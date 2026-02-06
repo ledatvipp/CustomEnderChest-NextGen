@@ -7,6 +7,7 @@ messages:
   reload-success: "<green>配置与语言文件重载完毕。</green>"
   data-still-loading: "<yellow>数据仍在载入，请稍候...</yellow>"
   data-busy: "<red>玩家数据库繁忙，请稍后再试。</red>"
+  data-load-failed: "<red>数据加载失败，请稍后重试。</red>"
   enderchest-click-disabled: "<red>请使用命令打开高级末影箱。</red>"
   save-error: "<red>保存数据时出错，请检查控制台。</red>"
   invalid-player: "<red>玩家名称无效。</red>"

@@ -10,6 +10,7 @@ messages:
   reload-success: "<green>Đã tải lại tệp cấu hình và ngôn ngữ.</green>"
   data-still-loading: "<yellow>Dữ liệu của bạn đang được tải, vui lòng chờ trong giây lát...</yellow>"
   data-busy: "<red>Dữ liệu người chơi hiện đang bận. Vui lòng thử lại sau giây lát.</red>"
+  data-load-failed: "<red>Không thể tải dữ liệu của bạn. Vui lòng thử lại.</red>"
   enderchest-click-disabled: "<red>Vui lòng sử dụng lệnh để mở EnderChest hay vì sử dụng rương.</red>"
   save-error: "<red>Đã xảy ra lỗi khi lưu dữ liệu. Vui lòng kiểm tra console.</red>"
   invalid-player: "<red>Tên người chơi không hợp lệ.</red>"

@@ -48,6 +48,10 @@ storage:
   # Time is in seconds.
   auto-save-interval-seconds: 300 # Default is 5 minutes
 
+  # Maximum time to wait for a data load before timing out (in seconds).
+  # This helps prevent players getting stuck with "data-still-loading".
+  load-timeout-seconds: 15
+
   # Settings for MySQL (only apply if `type` is "mysql")
   mysql:
     host: "127.0.0.1"
@@ -131,4 +135,3 @@ sounds:
     name: "ENTITY_PLAYER_LEVELUP"
     volume: 0.8
     pitch: 1.5
-
